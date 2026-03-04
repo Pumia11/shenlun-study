@@ -1,0 +1,22 @@
+---
+export interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+---
+
+<footer class="py-8 border-t border-white/10">
+  <div class="container mx-auto px-6">
+    <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+      <p class="text-accent-300 text-sm">
+        &copy; {new Date().getFullYear()} My Blog. All rights reserved.
+      </p>
+      <div class="flex gap-6">
+        <a href="#" class="text-accent-300 hover:text-white transition-colors text-sm">Twitter</a>
+        <a href="#" class="text-accent-300 hover:text-white transition-colors text-sm">GitHub</a>
+        <a href="#" class="text-accent-300 hover:text-white transition-colors text-sm">Email</a>
+      </div>
+    </div>
+  </div>
+</footer>

@@ -1,0 +1,80 @@
+---
+import BlogLayout from '../../layouts/BlogLayout.astro';
+
+const post = {
+  title: '开始我的写作之旅',
+  date: '2026-03-04',
+  image: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1920&q=80',
+  content: `
+## 为什么开始写博客
+
+一直以来，我都有记录生活的习惯。从最初的纸质日记，到后来的社交媒体，再到现在的个人博客。每一次转变，都是对表达方式的一次重新思考。
+
+写博客对我来说，是一种沉淀。在这个信息爆炸的时代，我们每天接收大量的信息，却很少有时间去整理和消化。博客给了我一个安静的空间，让我可以慢慢地思考，慢慢地表达。
+
+## 我想写什么
+
+这个博客将记录我的：
+
+- **生活感悟** - 日常生活中的所思所想
+- **学习笔记** - 新知识、新技能的学习过程
+- **项目分享** - 个人项目的设计与开发经验
+- **读书心得** - 好书推荐与阅读感悟
+
+## 写在最后
+
+感谢你来到这里。希望我的文字能给你带来一些启发或共鸣。
+
+如果你有任何想法，欢迎与我交流。
+  `
+};
+---
+
+<BlogLayout title={post.title}>
+  <article>
+    <header class="relative min-h-[70vh] flex items-center justify-center overflow-hidden">
+      <div class="absolute inset-0 z-0">
+        <img 
+          src={post.image} 
+          alt={post.title}
+          class="w-full h-full object-cover opacity-40"
+        />
+        <div class="absolute inset-0 bg-gradient-to-t from-dark-900 via-dark-900/60 to-transparent"></div>
+      </div>
+      
+      <div class="relative z-10 text-center px-6">
+        <p class="text-accent-300 text-sm tracking-widest uppercase mb-4">
+          {new Date(post.date).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
+        </p>
+        <h1 class="text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-8">
+          {post.title}
+        </h1>
+      </div>
+    </header>
+
+    <div class="container mx-auto px-6 py-16">
+      <div class="max-w-3xl mx-auto">
+        <div class="prose prose-invert prose-lg max-w-none
+          prose-headings:text-white prose-headings:font-bold
+          prose-h2:text-3xl prose-h2:mt-12 prose-h2:mb-6
+          prose-p:text-accent-400 prose-p:leading-relaxed
+          prose-li:text-accent-400
+          prose-strong:text-white
+          prose-a:text-white prose-a:underline prose-a:underline-offset-4
+        " set:html={post.content} />
+        
+        <div class="mt-16 pt-8 border-t border-white/10">
+          <a 
+            href="/blog"
+            class="inline-flex items-center gap-2 text-accent-300 hover:text-white transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16l-4-4m0 0l4-4m-4 4h18"></path>
+            </svg>
+            返回文章列表
+          </a>
+        </div>
+      </div>
+    </div>
+  </article>
+</BlogLayout>

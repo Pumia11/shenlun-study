@@ -1,0 +1,47 @@
+---
+export interface Props {
+  title: string;
+  image?: string;
+  excerpt?: string;
+  date?: string;
+  slug?: string;
+}
+
+const { title, image = '/placeholder.jpg', excerpt, date, slug } = Astro.props;
+---
+
+<article class="group relative min-h-screen flex items-center justify-center overflow-hidden">
+  <div class="absolute inset-0 z-0">
+    <img 
+      src={image} 
+      alt={title}
+      class="w-full h-full object-cover opacity-40 group-hover:opacity-50 group-hover:scale-105 transition-all duration-700"
+    />
+    <div class="absolute inset-0 bg-gradient-to-t from-dark-900 via-dark-900/60 to-transparent"></div>
+  </div>
+  
+  <div class="relative z-10 container mx-auto px-6 text-center">
+    {date && (
+      <p class="text-accent-300 text-sm tracking-widest uppercase mb-4 animate-fade-in">
+        {new Date(date).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
+      </p>
+    )}
+    <h2 class="text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-6 animate-slide-up">
+      {title}
+    </h2>
+    {excerpt && (
+      <p class="text-accent-400 text-lg md:text-xl max-w-2xl mx-auto mb-8 animate-slide-up" style="animation-delay: 0.1s">
+        {excerpt}
+      </p>
+    )}
+    {slug && (
+      <a 
+        href={`/blog/${slug}`}
+        class="inline-block px-8 py-3 border border-white/30 text-white text-sm tracking-widest uppercase hover:bg-white hover:text-dark-900 transition-all duration-300 animate-slide-up"
+        style="animation-delay: 0.2s"
+      >
+        阅读更多
+      </a>
+    )}
+  </div>
+</article>
