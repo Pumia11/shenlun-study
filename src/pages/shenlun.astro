@@ -150,15 +150,20 @@ import BlogLayout from '../layouts/BlogLayout.astro';
   import * as pdfjsLib from 'pdfjs-dist';
   import mammoth from 'mammoth';
 
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
+
   const supabaseUrl = import.meta.env.SUPABASE_URL;
   const supabaseAnonKey = import.meta.env.SUPABASE_ANON_KEY;
 
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing Supabase environment variables');
+  let supabase: ReturnType<typeof createClient> | null = null;
+  
+  if (supabaseUrl && supabaseAnonKey) {
+    try {
+      supabase = createClient(supabaseUrl, supabaseAnonKey);
+    } catch (e) {
+      console.error('Failed to initialize Supabase:', e);
+    }
   }
-
-  const supabase = createClient(supabaseUrl, supabaseAnonKey);
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
 
   interface Paper {
     id: string;
@@ -197,19 +202,14 @@ import BlogLayout from '../layouts/BlogLayout.astro';
   const paperList = document.getElementById('paperList');
   const paperCount = document.getElementById('paperCount');
 
-  document.addEventListener('dragover', (e) => {
-    e.preventDefault();
-  });
-
-  document.addEventListener('drop', (e) => {
-    e.preventDefault();
-  });
-
   uploadArea?.addEventListener('click', () => fileInput?.click());
 
   uploadArea?.addEventListener('dragover', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
     uploadArea.classList.add('border-accent-300');
   });
 
@@ -343,7 +343,7 @@ import BlogLayout from '../layouts/BlogLayout.astro';
       return;
     }
 
-    if (!currentPaperId) {
+    if (!currentPaperId || !supabase) {
       currentAnswers.push({
         id: Date.now().toString(),
         paper_id: '',
@@ -378,7 +378,7 @@ import BlogLayout from '../layouts/BlogLayout.astro';
 
   clearAnswersBtn?.addEventListener('click', async () => {
     if (confirm('确定要清空当前所有答案吗？此操作不可恢复。')) {
-      if (!currentPaperId) {
+      if (!currentPaperId || !supabase) {
         currentAnswers = [];
         renderAnswers();
         return;
@@ -409,6 +409,11 @@ import BlogLayout from '../layouts/BlogLayout.astro';
 
     const paperName = prompt('请输入试卷名称：', currentFile?.name || '未命名试卷');
     if (!paperName) return;
+
+    if (!supabase) {
+      alert('数据库未连接，无法保存');
+      return;
+    }
 
     try {
       if (currentPaperId) {
@@ -457,6 +462,13 @@ import BlogLayout from '../layouts/BlogLayout.astro';
   });
 
   async function loadPapers() {
+    if (!supabase) {
+      if (paperList) {
+        paperList.innerHTML = '<p class="text-white/40 text-center py-8">数据库未连接</p>';
+      }
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from('papers')
@@ -525,6 +537,8 @@ import BlogLayout from '../layouts/BlogLayout.astro';
   }
 
   async function loadPaper(paperId: string) {
+    if (!supabase) return;
+
     try {
       const { data: paper, error: paperError } = await supabase
         .from('papers')
@@ -562,6 +576,8 @@ import BlogLayout from '../layouts/BlogLayout.astro';
   }
 
   async function deletePaper(paperId: string) {
+    if (!supabase) return;
+
     try {
       const { error } = await supabase
         .from('papers')
@@ -619,7 +635,7 @@ import BlogLayout from '../layouts/BlogLayout.astro';
       btn.addEventListener('click', async (e) => {
         const id = (e.currentTarget as HTMLElement).dataset.id;
         if (id && confirm('确定要删除这条答案吗？')) {
-          if (!currentPaperId) {
+          if (!currentPaperId || !supabase) {
             currentAnswers = currentAnswers.filter(a => a.id !== id);
             renderAnswers();
             return;
