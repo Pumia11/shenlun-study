@@ -197,6 +197,14 @@ import BlogLayout from '../layouts/BlogLayout.astro';
   const paperList = document.getElementById('paperList');
   const paperCount = document.getElementById('paperCount');
 
+  document.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+
+  document.addEventListener('drop', (e) => {
+    e.preventDefault();
+  });
+
   uploadArea?.addEventListener('click', () => fileInput?.click());
 
   uploadArea?.addEventListener('dragover', (e) => {
