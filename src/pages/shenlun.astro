@@ -8,6 +8,7 @@ import BlogLayout from '../layouts/BlogLayout.astro';
       <div class="text-center mb-12">
         <h1 class="text-4xl md:text-5xl font-bold text-white mb-4">申论学习记录</h1>
         <p class="text-accent-400 text-lg">上传试题文档，记录你的答案与思考</p>
+        <p class="text-white/40 text-sm mt-2">所有用户共享数据，可查看他人上传的试卷</p>
       </div>
 
       <div class="grid lg:grid-cols-3 gap-8">
@@ -24,7 +25,7 @@ import BlogLayout from '../layouts/BlogLayout.astro';
             </div>
             
             <div id="paperList" class="space-y-3 max-h-[600px] overflow-y-auto">
-              <p class="text-white/40 text-center py-8">暂无保存的试卷</p>
+              <p class="text-white/40 text-center py-8">加载中...</p>
             </div>
           </div>
         </div>
@@ -145,57 +146,39 @@ import BlogLayout from '../layouts/BlogLayout.astro';
 </BlogLayout>
 
 <script>
+  import { createClient } from '@supabase/supabase-js';
   import * as pdfjsLib from 'pdfjs-dist';
   import mammoth from 'mammoth';
 
-  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
+  const supabaseUrl = import.meta.env.SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env.SUPABASE_ANON_KEY;
 
-  interface Answer {
-    id: string;
-    content: string;
-    timestamp: number;
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Missing Supabase environment variables');
   }
+
+  const supabase = createClient(supabaseUrl, supabaseAnonKey);
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.0.379/pdf.worker.min.js';
 
   interface Paper {
     id: string;
-    fileName: string;
-    questionText: string;
-    answers: Answer[];
-    createdAt: number;
-    updatedAt: number;
+    file_name: string;
+    question_text: string;
+    created_at: string;
+    updated_at: string;
   }
 
-  interface SavedData {
-    papers: Paper[];
-    currentPaperId: string | null;
-    currentEditing: {
-      fileName: string;
-      questionText: string;
-      answers: Answer[];
-    };
+  interface Answer {
+    id: string;
+    paper_id: string;
+    content: string;
+    created_at: string;
   }
 
-  const STORAGE_KEY = 'shenlun_study_data_v2';
-
-  function getSavedData(): SavedData {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (data) {
-      return JSON.parse(data);
-    }
-    return {
-      papers: [],
-      currentPaperId: null,
-      currentEditing: {
-        fileName: '',
-        questionText: '',
-        answers: []
-      }
-    };
-  }
-
-  function saveData(data: SavedData) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-  }
+  let currentPaperId: string | null = null;
+  let currentFile: File | null = null;
+  let currentQuestionText: string = '';
+  let currentAnswers: Answer[] = [];
 
   const uploadArea = document.getElementById('uploadArea');
   const fileInput = document.getElementById('fileInput') as HTMLInputElement;
@@ -251,16 +234,10 @@ import BlogLayout from '../layouts/BlogLayout.astro';
     if (questionContent) {
       questionContent.innerHTML = '<p class="text-white/40 text-center py-12">上传文档后将在此显示试题内容</p>';
     }
-    
-    const data = getSavedData();
-    data.currentEditing = {
-      fileName: '',
-      questionText: '',
-      answers: []
-    };
-    data.currentPaperId = null;
-    saveData(data);
-    
+    currentFile = null;
+    currentQuestionText = '';
+    currentAnswers = [];
+    currentPaperId = null;
     renderAnswers();
   }
 
@@ -276,6 +253,7 @@ import BlogLayout from '../layouts/BlogLayout.astro';
       return;
     }
 
+    currentFile = file;
     if (fileInfo) fileInfo.classList.remove('hidden');
     if (fileName) fileName.textContent = file.name;
     if (fileSize) fileSize.textContent = formatFileSize(file.size);
@@ -290,17 +268,13 @@ import BlogLayout from '../layouts/BlogLayout.astro';
         text = await extractTextFromWord(file);
       }
 
+      currentQuestionText = text;
       if (questionContent) {
         questionContent.innerHTML = `<div class="text-white whitespace-pre-wrap">${escapeHtml(text)}</div>`;
       }
 
-      const data = getSavedData();
-      data.currentEditing.fileName = file.name;
-      data.currentEditing.questionText = text;
-      data.currentEditing.answers = [];
-      data.currentPaperId = null;
-      saveData(data);
-
+      currentAnswers = [];
+      currentPaperId = null;
       renderAnswers();
 
     } catch (error) {
@@ -350,94 +324,270 @@ import BlogLayout from '../layouts/BlogLayout.astro';
     return div.innerHTML;
   }
 
-  saveAnswerBtn?.addEventListener('click', () => {
+  saveAnswerBtn?.addEventListener('click', async () => {
     const answer = answerInput?.value.trim();
     if (!answer) {
       alert('请输入答案内容');
       return;
     }
 
-    const data = getSavedData();
-    const newAnswer: Answer = {
-      id: Date.now().toString(),
-      content: answer,
-      timestamp: Date.now()
-    };
-    data.currentEditing.answers.push(newAnswer);
-    saveData(data);
-
-    if (answerInput) answerInput.value = '';
-    renderAnswers();
-  });
-
-  clearAnswersBtn?.addEventListener('click', () => {
-    if (confirm('确定要清空当前所有答案吗？此操作不可恢复。')) {
-      const data = getSavedData();
-      data.currentEditing.answers = [];
-      saveData(data);
+    if (!currentPaperId) {
+      currentAnswers.push({
+        id: Date.now().toString(),
+        paper_id: '',
+        content: answer,
+        created_at: new Date().toISOString()
+      });
+      if (answerInput) answerInput.value = '';
       renderAnswers();
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('answers')
+        .insert({
+          paper_id: currentPaperId,
+          content: answer
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      currentAnswers.push(data);
+      if (answerInput) answerInput.value = '';
+      renderAnswers();
+    } catch (error) {
+      console.error('Error saving answer:', error);
+      alert('保存答案失败');
     }
   });
 
-  savePaperBtn?.addEventListener('click', () => {
-    const data = getSavedData();
-    
-    if (!data.currentEditing.questionText) {
+  clearAnswersBtn?.addEventListener('click', async () => {
+    if (confirm('确定要清空当前所有答案吗？此操作不可恢复。')) {
+      if (!currentPaperId) {
+        currentAnswers = [];
+        renderAnswers();
+        return;
+      }
+
+      try {
+        const { error } = await supabase
+          .from('answers')
+          .delete()
+          .eq('paper_id', currentPaperId);
+
+        if (error) throw error;
+
+        currentAnswers = [];
+        renderAnswers();
+      } catch (error) {
+        console.error('Error clearing answers:', error);
+        alert('清空答案失败');
+      }
+    }
+  });
+
+  savePaperBtn?.addEventListener('click', async () => {
+    if (!currentQuestionText) {
       alert('请先上传试题文档');
       return;
     }
 
-    const paperName = prompt('请输入试卷名称：', data.currentEditing.fileName || '未命名试卷');
+    const paperName = prompt('请输入试卷名称：', currentFile?.name || '未命名试卷');
     if (!paperName) return;
 
-    if (data.currentPaperId) {
-      const paperIndex = data.papers.findIndex(p => p.id === data.currentPaperId);
-      if (paperIndex !== -1) {
-        data.papers[paperIndex].fileName = paperName;
-        data.papers[paperIndex].questionText = data.currentEditing.questionText;
-        data.papers[paperIndex].answers = data.currentEditing.answers;
-        data.papers[paperIndex].updatedAt = Date.now();
-      }
-    } else {
-      const newPaper: Paper = {
-        id: Date.now().toString(),
-        fileName: paperName,
-        questionText: data.currentEditing.questionText,
-        answers: data.currentEditing.answers,
-        createdAt: Date.now(),
-        updatedAt: Date.now()
-      };
-      data.papers.unshift(newPaper);
-      data.currentPaperId = newPaper.id;
-    }
+    try {
+      if (currentPaperId) {
+        const { error } = await supabase
+          .from('papers')
+          .update({
+            file_name: paperName,
+            question_text: currentQuestionText
+          })
+          .eq('id', currentPaperId);
 
-    saveData(data);
-    renderPaperList();
-    alert('试卷保存成功！');
+        if (error) throw error;
+      } else {
+        const { data, error } = await supabase
+          .from('papers')
+          .insert({
+            file_name: paperName,
+            question_text: currentQuestionText
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        currentPaperId = data.id;
+
+        if (currentAnswers.length > 0) {
+          const answersToInsert = currentAnswers.map(a => ({
+            paper_id: currentPaperId,
+            content: a.content
+          }));
+
+          const { error: answersError } = await supabase
+            .from('answers')
+            .insert(answersToInsert);
+
+          if (answersError) throw answersError;
+        }
+      }
+
+      await loadPapers();
+      alert('试卷保存成功！');
+    } catch (error) {
+      console.error('Error saving paper:', error);
+      alert('保存试卷失败: ' + (error as any).message);
+    }
   });
 
+  async function loadPapers() {
+    try {
+      const { data, error } = await supabase
+        .from('papers')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      if (paperCount) {
+        paperCount.textContent = `(${data?.length || 0} 份)`;
+      }
+
+      if (!paperList) return;
+
+      if (!data || data.length === 0) {
+        paperList.innerHTML = '<p class="text-white/40 text-center py-8">暂无保存的试卷</p>';
+        return;
+      }
+
+      paperList.innerHTML = data.map((paper: Paper) => `
+        <div class="bg-dark-700/30 rounded-lg p-4 border ${currentPaperId === paper.id ? 'border-accent-300' : 'border-white/5'} hover:border-accent-300/50 transition-colors cursor-pointer paper-item" data-id="${paper.id}">
+          <div class="flex items-start justify-between gap-2">
+            <div class="flex-1 min-w-0">
+              <h3 class="text-white font-medium truncate">${escapeHtml(paper.file_name)}</h3>
+              <div class="flex items-center gap-2 mt-1 text-xs text-white/40">
+                <span>${formatDate(paper.created_at)}</span>
+              </div>
+            </div>
+            <button 
+              class="delete-paper text-red-400 hover:text-red-300 transition-colors p-1 flex-shrink-0"
+              data-id="${paper.id}"
+              onclick="event.stopPropagation();"
+            >
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      `).join('');
+
+      paperList.querySelectorAll('.paper-item').forEach(item => {
+        item.addEventListener('click', (e) => {
+          const id = (e.currentTarget as HTMLElement).dataset.id;
+          if (id) {
+            loadPaper(id);
+          }
+        });
+      });
+
+      paperList.querySelectorAll('.delete-paper').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = (e.currentTarget as HTMLElement).dataset.id;
+          if (id && confirm('确定要删除这份试卷吗？')) {
+            await deletePaper(id);
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Error loading papers:', error);
+      if (paperList) {
+        paperList.innerHTML = '<p class="text-red-400 text-center py-8">加载失败，请检查数据库配置</p>';
+      }
+    }
+  }
+
+  async function loadPaper(paperId: string) {
+    try {
+      const { data: paper, error: paperError } = await supabase
+        .from('papers')
+        .select('*')
+        .eq('id', paperId)
+        .single();
+
+      if (paperError) throw paperError;
+
+      const { data: answers, error: answersError } = await supabase
+        .from('answers')
+        .select('*')
+        .eq('paper_id', paperId)
+        .order('created_at', { ascending: true });
+
+      if (answersError) throw answersError;
+
+      currentPaperId = paperId;
+      currentQuestionText = paper.question_text;
+      currentAnswers = answers || [];
+
+      if (fileInfo) fileInfo.classList.remove('hidden');
+      if (fileName) fileName.textContent = paper.file_name;
+      if (fileSize) fileSize.textContent = '已加载';
+      if (questionContent) {
+        questionContent.innerHTML = `<div class="text-white whitespace-pre-wrap">${escapeHtml(paper.question_text)}</div>`;
+      }
+
+      renderAnswers();
+      await loadPapers();
+    } catch (error) {
+      console.error('Error loading paper:', error);
+      alert('加载试卷失败');
+    }
+  }
+
+  async function deletePaper(paperId: string) {
+    try {
+      const { error } = await supabase
+        .from('papers')
+        .delete()
+        .eq('id', paperId);
+
+      if (error) throw error;
+
+      if (currentPaperId === paperId) {
+        clearCurrentEditing();
+      }
+
+      await loadPapers();
+    } catch (error) {
+      console.error('Error deleting paper:', error);
+      alert('删除试卷失败');
+    }
+  }
+
   function renderAnswers() {
-    const data = getSavedData();
-    const answers = data.currentEditing.answers;
-    
     if (answerCount) {
-      answerCount.textContent = `(${answers.length} 条)`;
+      answerCount.textContent = `(${currentAnswers.length} 条)`;
     }
 
     if (!answersList) return;
 
-    if (answers.length === 0) {
+    if (currentAnswers.length === 0) {
       answersList.innerHTML = '<p class="text-white/40 text-center py-8">暂无保存的答案</p>';
       return;
     }
 
-    answersList.innerHTML = answers.map((answer, index) => `
+    answersList.innerHTML = currentAnswers.map((answer, index) => `
       <div class="bg-dark-700/30 rounded-xl p-4 border border-white/5">
         <div class="flex items-start justify-between gap-4">
           <div class="flex-1">
             <div class="flex items-center gap-2 mb-2">
               <span class="text-accent-300 font-semibold">答案（${numberToChinese(index + 1)}）</span>
-              <span class="text-white/40 text-sm">${formatTimestamp(answer.timestamp)}</span>
+              <span class="text-white/40 text-sm">${formatTimestamp(answer.created_at)}</span>
             </div>
             <p class="text-white whitespace-pre-wrap">${escapeHtml(answer.content)}</p>
           </div>
@@ -454,122 +604,32 @@ import BlogLayout from '../layouts/BlogLayout.astro';
     `).join('');
 
     answersList.querySelectorAll('.delete-answer').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         const id = (e.currentTarget as HTMLElement).dataset.id;
         if (id && confirm('确定要删除这条答案吗？')) {
-          const data = getSavedData();
-          data.currentEditing.answers = data.currentEditing.answers.filter(a => a.id !== id);
-          saveData(data);
-          renderAnswers();
+          if (!currentPaperId) {
+            currentAnswers = currentAnswers.filter(a => a.id !== id);
+            renderAnswers();
+            return;
+          }
+
+          try {
+            const { error } = await supabase
+              .from('answers')
+              .delete()
+              .eq('id', id);
+
+            if (error) throw error;
+
+            currentAnswers = currentAnswers.filter(a => a.id !== id);
+            renderAnswers();
+          } catch (error) {
+            console.error('Error deleting answer:', error);
+            alert('删除答案失败');
+          }
         }
       });
     });
-  }
-
-  function renderPaperList() {
-    const data = getSavedData();
-    
-    if (paperCount) {
-      paperCount.textContent = `(${data.papers.length} 份)`;
-    }
-
-    if (!paperList) return;
-
-    if (data.papers.length === 0) {
-      paperList.innerHTML = '<p class="text-white/40 text-center py-8">暂无保存的试卷</p>';
-      return;
-    }
-
-    paperList.innerHTML = data.papers.map((paper) => `
-      <div class="bg-dark-700/30 rounded-lg p-4 border ${data.currentPaperId === paper.id ? 'border-accent-300' : 'border-white/5'} hover:border-accent-300/50 transition-colors cursor-pointer paper-item" data-id="${paper.id}">
-        <div class="flex items-start justify-between gap-2">
-          <div class="flex-1 min-w-0">
-            <h3 class="text-white font-medium truncate">${escapeHtml(paper.fileName)}</h3>
-            <div class="flex items-center gap-2 mt-1 text-xs text-white/40">
-              <span>${paper.answers.length} 条答案</span>
-              <span>•</span>
-              <span>${formatDate(paper.updatedAt)}</span>
-            </div>
-          </div>
-          <button 
-            class="delete-paper text-red-400 hover:text-red-300 transition-colors p-1 flex-shrink-0"
-            data-id="${paper.id}"
-            onclick="event.stopPropagation();"
-          >
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-          </button>
-        </div>
-      </div>
-    `).join('');
-
-    paperList.querySelectorAll('.paper-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-        const id = (e.currentTarget as HTMLElement).dataset.id;
-        if (id) {
-          loadPaper(id);
-        }
-      });
-    });
-
-    paperList.querySelectorAll('.delete-paper').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const id = (e.currentTarget as HTMLElement).dataset.id;
-        if (id && confirm('确定要删除这份试卷吗？')) {
-          deletePaper(id);
-        }
-      });
-    });
-  }
-
-  function loadPaper(paperId: string) {
-    const data = getSavedData();
-    const paper = data.papers.find(p => p.id === paperId);
-    
-    if (!paper) return;
-
-    data.currentPaperId = paper.id;
-    data.currentEditing = {
-      fileName: paper.fileName,
-      questionText: paper.questionText,
-      answers: [...paper.answers]
-    };
-    saveData(data);
-
-    if (fileInfo) fileInfo.classList.remove('hidden');
-    if (fileName) fileName.textContent = paper.fileName;
-    if (fileSize) fileSize.textContent = '已加载';
-    if (questionContent) {
-      questionContent.innerHTML = `<div class="text-white whitespace-pre-wrap">${escapeHtml(paper.questionText)}</div>`;
-    }
-
-    renderAnswers();
-    renderPaperList();
-  }
-
-  function deletePaper(paperId: string) {
-    const data = getSavedData();
-    data.papers = data.papers.filter(p => p.id !== paperId);
-    
-    if (data.currentPaperId === paperId) {
-      data.currentPaperId = null;
-      data.currentEditing = {
-        fileName: '',
-        questionText: '',
-        answers: []
-      };
-      
-      if (fileInfo) fileInfo.classList.add('hidden');
-      if (questionContent) {
-        questionContent.innerHTML = '<p class="text-white/40 text-center py-12">上传文档后将在此显示试题内容</p>';
-      }
-    }
-    
-    saveData(data);
-    renderPaperList();
-    renderAnswers();
   }
 
   function numberToChinese(num: number): string {
@@ -583,7 +643,7 @@ import BlogLayout from '../layouts/BlogLayout.astro';
     }
   }
 
-  function formatTimestamp(timestamp: number): string {
+  function formatTimestamp(timestamp: string): string {
     const date = new Date(timestamp);
     return date.toLocaleString('zh-CN', {
       year: 'numeric',
@@ -594,7 +654,7 @@ import BlogLayout from '../layouts/BlogLayout.astro';
     });
   }
 
-  function formatDate(timestamp: number): string {
+  function formatDate(timestamp: string): string {
     const date = new Date(timestamp);
     return date.toLocaleDateString('zh-CN', {
       month: '2-digit',
@@ -602,19 +662,5 @@ import BlogLayout from '../layouts/BlogLayout.astro';
     });
   }
 
-  function loadSavedData() {
-    const data = getSavedData();
-    
-    if (data.currentEditing.questionText && questionContent) {
-      questionContent.innerHTML = `<div class="text-white whitespace-pre-wrap">${escapeHtml(data.currentEditing.questionText)}</div>`;
-      if (fileInfo) fileInfo.classList.remove('hidden');
-      if (fileName) fileName.textContent = data.currentEditing.fileName;
-      if (fileSize) fileSize.textContent = '已加载';
-    }
-
-    renderAnswers();
-    renderPaperList();
-  }
-
-  loadSavedData();
+  loadPapers();
 </script>

@@ -1,36 +1,9 @@
 ---
+import { getCollection } from 'astro:content';
 import BlogLayout from '../../layouts/BlogLayout.astro';
 
-const posts = [
-  {
-    title: '开始我的写作之旅',
-    slug: 'my-first-post',
-    excerpt: '这是我的第一篇博客文章，记录我开始写作的心路历程。',
-    date: '2026-03-04',
-    image: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1920&q=80'
-  },
-  {
-    title: '设计思维与创意',
-    slug: 'design-thinking',
-    excerpt: '探索设计思维如何帮助我们解决复杂问题，激发创意灵感。',
-    date: '2026-03-01',
-    image: 'https://images.unsplash.com/photo-1558655146-9f40138edfeb?w=1920&q=80'
-  },
-  {
-    title: '极简主义生活方式',
-    slug: 'minimalist-life',
-    excerpt: '少即是多，探索极简主义如何改变我的生活。',
-    date: '2026-02-28',
-    image: 'https://images.unsplash.com/photo-1494438639946-1ebd1d20bf85?w=1920&q=80'
-  },
-  {
-    title: '技术与人文',
-    slug: 'tech-and-humanity',
-    excerpt: '在数字时代，如何保持技术与人文的平衡。',
-    date: '2026-02-25',
-    image: 'https://images.unsplash.com/photo-1518770660439-4636190af475?w=1920&q=80'
-  },
-];
+const posts = await getCollection('blog');
+const sortedPosts = posts.sort((a, b) => new Date(b.data.date).valueOf() - new Date(a.data.date).valueOf());
 ---
 
 <BlogLayout title="文章">
@@ -43,12 +16,12 @@ const posts = [
   </section>
 
   <section class="bg-dark-900">
-    {posts.map((post) => (
+    {sortedPosts.map((post) => (
       <article class="group relative min-h-[60vh] flex items-center justify-center overflow-hidden border-b border-white/5">
         <div class="absolute inset-0 z-0">
           <img 
-            src={post.image} 
-            alt={post.title}
+            src={post.data.image} 
+            alt={post.data.title}
             class="w-full h-full object-cover opacity-30 group-hover:opacity-40 group-hover:scale-105 transition-all duration-700"
           />
           <div class="absolute inset-0 bg-gradient-to-t from-dark-900 via-dark-900/70 to-dark-900/50"></div>
@@ -57,16 +30,16 @@ const posts = [
         <div class="relative z-10 container mx-auto px-6">
           <div class="max-w-3xl">
             <p class="text-accent-300 text-sm tracking-widest uppercase mb-4">
-              {new Date(post.date).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
+              {new Date(post.data.date).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
             <h2 class="text-3xl md:text-5xl font-bold text-white mb-4 group-hover:text-accent-400 transition-colors">
-              {post.title}
+              {post.data.title}
             </h2>
             <p class="text-accent-400 text-lg mb-6">
-              {post.excerpt}
+              {post.data.description}
             </p>
             <a 
-              href={`/blog/${post.slug}`}
+              href={`/blog/${post.id}`}
               class="inline-flex items-center gap-2 text-white text-sm tracking-widest uppercase hover:gap-4 transition-all"
             >
               阅读文章

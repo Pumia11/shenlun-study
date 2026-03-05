@@ -1,0 +1,69 @@
+---
+import { getCollection, render } from 'astro:content';
+import BlogLayout from '../../layouts/BlogLayout.astro';
+
+export async function getStaticPaths() {
+  const posts = await getCollection('blog');
+  return posts.map((post) => ({
+    params: { slug: post.id },
+    props: { post },
+  }));
+}
+
+const { post } = Astro.props;
+const { Content } = await render(post);
+const { title, date, image } = post.data;
+---
+
+<BlogLayout title={title}>
+  <article>
+    <header class="relative min-h-[70vh] flex items-center justify-center overflow-hidden">
+      <div class="absolute inset-0 z-0">
+        <img 
+          src={image} 
+          alt={title}
+          class="w-full h-full object-cover opacity-40"
+        />
+        <div class="absolute inset-0 bg-gradient-to-t from-dark-900 via-dark-900/60 to-transparent"></div>
+      </div>
+      
+      <div class="relative z-10 text-center px-6">
+        <p class="text-accent-300 text-sm tracking-widest uppercase mb-4">
+          {new Date(date).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })}
+        </p>
+        <h1 class="text-4xl md:text-6xl lg:text-7xl font-bold text-white mb-8">
+          {title}
+        </h1>
+      </div>
+    </header>
+
+    <div class="container mx-auto px-6 py-16">
+      <div class="max-w-3xl mx-auto">
+        <div class="prose prose-invert max-w-none
+          prose-headings:text-white prose-headings:font-bold
+          prose-h2:text-2xl prose-h2:mt-10 prose-h2:mb-4
+          prose-h3:text-xl prose-h3:mt-6 prose-h3:mb-3
+          prose-p:text-accent-400 prose-p:leading-relaxed prose-p:text-sm
+          prose-li:text-accent-400 prose-li:text-sm
+          prose-strong:text-white
+          prose-blockquote:text-accent-300 prose-blockquote:border-l-accent-300
+          prose-a:text-white prose-a:underline prose-a:underline-offset-4
+        ">
+          <Content />
+        </div>
+        
+        <div class="mt-16 pt-8 border-t border-white/10">
+          <a 
+            href="/blog"
+            class="inline-flex items-center gap-2 text-accent-300 hover:text-white transition-colors"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16l-4-4m0 0l4-4m-4 4h18"></path>
+            </svg>
+            返回文章列表
+          </a>
+        </div>
+      </div>
+    </div>
+  </article>
+</BlogLayout>
